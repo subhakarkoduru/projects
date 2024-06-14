@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Phone Camera Stream</title>
+    <link rel="icon" href="data:,">
+</head>
+<body>
+    <h1>Phone Camera Stream</h1>
+    <video id="phone-camera" autoplay></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <button id="start-button">Start Camera</button>
+    <script>
+        const videoElement = document.getElementById('phone-camera');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const websocket = new WebSocket('wss://10.0.0.204:8000/video');
+        
+        if (window.requestAnimationFrame) {
+            console.log('requestAnimationFrame is supported');
+        } else {
+            console.log('requestAnimationFrame is not supported');
+        }
+
+        // Handle the WebSocket open event
+        websocket.onopen = (event) => {
+            console.log('WebSocket connection established.');
+            videoElement.style.border = "2px solid green"; // Set a visual indicator for connection
+        };
+
+        // Handle the WebSocket error event
+        websocket.onerror = (event) => {
+            console.error('WebSocket error:', event);
+            videoElement.style.border = "2px solid red"; // Set a visual indicator for error
+        };
+
+        // Handle the WebSocket close event
+        websocket.onclose = (event) => {
+            console.log('WebSocket connection closed:', event);
+            videoElement.style.border = "2px solid red"; // Set a visual indicator for closure
+        };
+
+        // Function to start the camera when the button is clicked
+        async function startCamera() {
+            try {
+                const stream = await new Promise((resolve, reject) => {
+                    const startButton = document.getElementById('start-button');
+                    startButton.addEventListener('click', async () => {
+                        try {
+                            const userMediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                            resolve(userMediaStream);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    });
+                });
+
+                videoElement.srcObject = stream;
+
+                // Wait for the video stream to load metadata (dimensions)
+                await new Promise(resolve => videoElement.onloadedmetadata = resolve);
+
+                // Set the canvas size to match the video stream's dimensions
+                canvas.width = videoElement.videoWidth;
+                canvas.height = videoElement.videoHeight;
+
+                videoElement.play();
+
+                function captureFrame() {
+                    context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+                    // Convert the canvas data to a Blob
+                    canvas.toBlob((blob) => {
+                        // Send the Blob over the WebSocket
+                        websocket.send(blob);
+
+                        // Request the next frame
+                        requestAnimationFrame(captureFrame);
+                    }, 'image/jpeg', 0.8);
+                }
+
+                requestAnimationFrame(captureFrame);
+            } catch (error) {
+                console.error('Error accessing the camera:', error);
+                videoElement.style.border = "2px solid red"; // Set a visual indicator for error
+            }
+        }
+
+        startCamera();
+
+        websocket.onmessage = function(event) {
+            const imageElement = document.getElementById('image');
+            imageElement.src = "war.png";
+            const data = JSON.parse(event.data);
+            console.log(2);
+        
+            // Access the frame image (base64-encoded)
+            const frameImageBase64 = data.frame;
+        
+            // Access the rectangle coordinates
+            const rectangleCoordinates = data.rectangle;
+            const x1 = rectangleCoordinates.x1;
+            const y1 = rectangleCoordinates.y1;
+            const x2 = rectangleCoordinates.x2;
+            const y2 = rectangleCoordinates.y2;
+        
+            console.log(x1, y1);
+        };
+    </script>
+</body>
+</html>
